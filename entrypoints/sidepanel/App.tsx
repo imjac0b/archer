@@ -1,22 +1,77 @@
-import { useState } from "react";
+import { useEffect } from "react";
+import { useAsyncRetry } from "react-use";
+import { Button } from "./components/ui/button";
+import { PlusIcon, XIcon } from "lucide-react";
 
 function App() {
-  const [count, setCount] = useState(0);
+  let { value: tabs, retry: refetch } = useAsyncRetry(async () => {
+    return browser.tabs.query({ currentWindow: true });
+  }, []);
+
+  useEffect(() => {
+    refetch();
+
+    browser.tabs.onCreated.addListener(refetch);
+    browser.tabs.onRemoved.addListener(refetch);
+    browser.tabs.onUpdated.addListener(refetch);
+    browser.tabs.onActivated.addListener(refetch);
+
+    return () => {
+      browser.tabs.onCreated.removeListener(refetch);
+      browser.tabs.onRemoved.removeListener(refetch);
+      browser.tabs.onUpdated.removeListener(refetch);
+      browser.tabs.onActivated.removeListener(refetch);
+    };
+  }, [refetch]);
+
+  if (!tabs) return null;
 
   return (
     <>
-      <h1 className="text-3xl font-bold underline">WXT + React testing</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the WXT and React logos to learn more
-      </p>
+      <main className="p-4 flex flex-col gap-2">
+        {tabs.map((tab) => (
+          <div key={tab.id} className="relative group">
+            <Button
+              variant={tab.active ? "secondary" : "ghost"}
+              className="justify-start w-full pr-8 px-3"
+              onClick={() => {
+                if (tab.id) {
+                  browser.tabs.update(tab.id, { active: true });
+                  refetch();
+                }
+              }}
+            >
+              {tab.favIconUrl && (
+                <img src={tab.favIconUrl} alt={tab.title} className="w-4 h-4" />
+              )}
+              <span className="text-sm truncate">{tab.title}</span>
+            </Button>
+            <Button
+              size="sm"
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-1 h-auto has-[>svg]:px-1 bg-secondary"
+              onClick={(e) => {
+                if (tab.id) {
+                  browser.tabs.remove(tab.id);
+                  refetch();
+                }
+              }}
+              variant="outline"
+            >
+              <XIcon />
+            </Button>
+          </div>
+        ))}
+        <Button
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={() => {
+            browser.tabs.create({ active: true });
+            refetch();
+          }}
+        >
+          <PlusIcon /> New tab
+        </Button>
+      </main>
     </>
   );
 }
