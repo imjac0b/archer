@@ -2,11 +2,20 @@ import { useEffect } from "react";
 import { useAsyncRetry } from "react-use";
 import { Button } from "./components/ui/button";
 import { PlusIcon, XIcon } from "lucide-react";
+import { Separator } from "./components/ui/separator";
 
 function App() {
   let { value: tabs, retry: refetch } = useAsyncRetry(async () => {
     return browser.tabs.query({ currentWindow: true });
   }, []);
+
+  let { value: bookmarks, retry: refetchBookmarks } =
+    useAsyncRetry(async () => {
+      const [tree] = await browser.bookmarks.getTree();
+      return tree.children?.flatMap((node) => node.children);
+    }, []);
+
+  console.log(bookmarks);
 
   useEffect(() => {
     refetch();
@@ -22,13 +31,33 @@ function App() {
       browser.tabs.onUpdated.removeListener(refetch);
       browser.tabs.onActivated.removeListener(refetch);
     };
-  }, [refetch]);
+  }, []);
 
   if (!tabs) return null;
 
   return (
     <>
       <main className="p-4 flex flex-col gap-2">
+        {bookmarks?.map((bookmark) => (
+          <Button
+            key={bookmark?.id}
+            // variant={tab.active ? "secondary" : "ghost"}
+            variant="ghost"
+            className="justify-start w-full pr-8 px-3"
+            onClick={() => {
+              if (bookmark?.id) {
+                browser.tabs.create({ url: bookmark.url });
+                refetch();
+              }
+            }}
+          >
+            {/* {tab.favIconUrl && (
+              <img src={tab.favIconUrl} alt={tab.title} className="w-4 h-4" />
+            )} */}
+            <span className="text-sm truncate">{bookmark?.title}</span>
+          </Button>
+        ))}
+        <Separator />
         {tabs.map((tab) => (
           <div key={tab.id} className="relative group">
             <Button

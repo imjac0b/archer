@@ -6,7 +6,7 @@ export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   manifest: {
     name: "Archer",
-    permissions: ["sidePanel", "tabs"],
+    permissions: ["sidePanel", "tabs", "bookmarks"],
   },
   vite(env) {
     return {
