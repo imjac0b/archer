@@ -1,4 +1,5 @@
 import { defineConfig } from "wxt";
+import tailwindcss from "@tailwindcss/vite";
 
 // See https://wxt.dev/api/config.html
 export default defineConfig({
@@ -6,5 +7,11 @@ export default defineConfig({
   manifest: {
     name: "Archer",
     permissions: ["sidePanel"],
+  },
+  vite(env) {
+    return {
+      ...env,
+      plugins: [tailwindcss()],
+    };
   },
 });
