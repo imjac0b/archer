@@ -73,12 +73,12 @@ function App() {
           <button
             className="absolute right-0 bg-[#3C3C3C] top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity font-bold"
             onClick={() => {
-              const tabId = tabs
-                .map((tab) => tab.id)
-                .filter((id) => id !== undefined);
-
-              browser.tabs.create({ active: true });
-              browser.tabs.remove(tabId);
+              browser.tabs.remove(
+                tabs
+                  .filter((tab) => !tab.active && !tab.audible)
+                  .map((tab) => tab.id!)
+                  .filter((id) => id !== undefined)
+              );
               refetchTabs();
             }}
           >
