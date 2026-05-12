@@ -1,6 +1,13 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { PlusIcon, Settings2Icon, XIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  FolderIcon,
+  PlusIcon,
+  Settings2Icon,
+  XIcon,
+} from "lucide-react";
 import { Button } from "./components/ui/button";
 import { Separator } from "./components/ui/separator";
 
@@ -9,9 +16,31 @@ const TOP_PINS_FOLDER_TITLE = "Top Pins";
 const ABOVE_SEPARATOR_FOLDER_TITLE = "Above Separator";
 
 type BookmarkFolderData = {
-  aboveSeparatorBookmarks: browser.bookmarks.BookmarkTreeNode[];
+  aboveSeparatorItems: browser.bookmarks.BookmarkTreeNode[];
   topPinnedBookmarks: browser.bookmarks.BookmarkTreeNode[];
 };
+
+function hasBookmarkUrl(
+  node: browser.bookmarks.BookmarkTreeNode,
+): node is browser.bookmarks.BookmarkTreeNode & { url: string } {
+  return typeof node.url === "string" && node.url.length > 0;
+}
+
+function collectBookmarkUrls(nodes: browser.bookmarks.BookmarkTreeNode[]): string[] {
+  const urls: string[] = [];
+
+  for (const node of nodes) {
+    if (hasBookmarkUrl(node)) {
+      urls.push(node.url);
+    }
+
+    if (node.children?.length) {
+      urls.push(...collectBookmarkUrls(node.children));
+    }
+  }
+
+  return urls;
+}
 
 function Favicon({
   alt,
@@ -73,7 +102,7 @@ async function getArcherBookmarkFolders(): Promise<BookmarkFolderData> {
 
   if (!rootFolder?.id) {
     return {
-      aboveSeparatorBookmarks: [],
+      aboveSeparatorItems: [],
       topPinnedBookmarks: [],
     };
   }
@@ -88,19 +117,22 @@ async function getArcherBookmarkFolders(): Promise<BookmarkFolderData> {
     ABOVE_SEPARATOR_FOLDER_TITLE,
   );
 
-  const [topPinnedBookmarks, aboveSeparatorBookmarks] = await Promise.all([
+  const [topPinnedBookmarks, aboveSeparatorTree] = await Promise.all([
     browser.bookmarks.getChildren(topPinsFolder.id),
-    browser.bookmarks.getChildren(aboveSeparatorFolder.id),
+    browser.bookmarks.getSubTree(aboveSeparatorFolder.id),
   ]);
 
   return {
-    aboveSeparatorBookmarks: aboveSeparatorBookmarks.filter((node) => !!node.url),
-    topPinnedBookmarks: topPinnedBookmarks.filter((node) => !!node.url),
+    aboveSeparatorItems: aboveSeparatorTree[0]?.children ?? [],
+    topPinnedBookmarks: topPinnedBookmarks.filter(hasBookmarkUrl),
   };
 }
 
 function App() {
   const visibleTabsRef = useRef<HTMLDivElement>(null);
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const { data: tabs, refetch: refetchTabs } = useQuery({
     queryKey: ["tabs"],
     queryFn: () => browser.tabs.query({ currentWindow: true }),
@@ -148,16 +180,12 @@ function App() {
   if (!tabs) return null;
 
   const topPinnedBookmarks = bookmarkFolders?.topPinnedBookmarks ?? [];
-  const aboveSeparatorBookmarks = bookmarkFolders?.aboveSeparatorBookmarks ?? [];
+  const aboveSeparatorItems = bookmarkFolders?.aboveSeparatorItems ?? [];
   const tabsClaimedByBookmarks = new Set<number>();
 
-  for (const bookmark of [...topPinnedBookmarks, ...aboveSeparatorBookmarks]) {
-    if (!bookmark.url) {
-      continue;
-    }
-
+  for (const url of [...topPinnedBookmarks.map((bookmark) => bookmark.url), ...collectBookmarkUrls(aboveSeparatorItems)]) {
     const firstMatchingTab = tabs.find(
-      (tab) => tab.url === bookmark.url && tab.id !== undefined,
+      (tab) => tab.url === url && tab.id !== undefined,
     );
 
     if (firstMatchingTab?.id !== undefined) {
@@ -186,6 +214,74 @@ function App() {
       hasMatchingTab: !!matchingTab,
       isActive: !!matchingTab?.active,
     };
+  };
+
+  const toggleFolder = (folderId: string) => {
+    setExpandedFolderIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(folderId)) {
+        next.delete(folderId);
+      } else {
+        next.add(folderId);
+      }
+
+      return next;
+    });
+  };
+
+  const renderAboveSeparatorNode = (
+    node: browser.bookmarks.BookmarkTreeNode,
+    depth = 0,
+  ): React.ReactNode => {
+    if (hasBookmarkUrl(node)) {
+      const bookmarkTabState = getBookmarkTabState(node.url);
+
+      return (
+        <Button
+          key={node.id}
+          variant={bookmarkTabState.isActive ? "secondary" : "ghost"}
+          className="w-full justify-start px-3"
+          style={{ paddingLeft: `${12 + depth * 16}px` }}
+          onClick={async () => {
+            await openBookmarkTarget(node.url, refetchTabs);
+          }}
+        >
+          <Favicon
+            src={`https://www.google.com/s2/favicons?domain=${node.url}&sz=128`}
+            alt={node.title || node.url}
+            className={`h-4 w-4 ${bookmarkTabState.hasMatchingTab ? "opacity-100" : "opacity-70"}`}
+          />
+          <span className="truncate text-sm">{node.title || node.url}</span>
+        </Button>
+      );
+    }
+
+    const childNodes = node.children ?? [];
+    const isExpanded = expandedFolderIds.has(node.id);
+    const FolderChevron = isExpanded ? ChevronDownIcon : ChevronRightIcon;
+
+    return (
+      <div key={node.id} className="space-y-1">
+        <Button
+          variant="ghost"
+          className="w-full justify-start px-3"
+          style={{ paddingLeft: `${12 + depth * 16}px` }}
+          onClick={() => {
+            toggleFolder(node.id);
+          }}
+        >
+          <FolderChevron className="h-4 w-4 opacity-70" />
+          <FolderIcon className="h-4 w-4 opacity-70" />
+          <span className="truncate text-sm">{node.title}</span>
+        </Button>
+        {isExpanded
+          ? childNodes.map((childNode) =>
+              renderAboveSeparatorNode(childNode, depth + 1),
+            )
+          : null}
+      </div>
+    );
   };
 
   return (
@@ -225,31 +321,7 @@ function App() {
         ))}
       </div>
 
-      {aboveSeparatorBookmarks.map((bookmark) => (
-        (() => {
-          if (!bookmark.url) return null;
-
-          const bookmarkTabState = getBookmarkTabState(bookmark.url);
-
-          return (
-            <Button
-              key={bookmark.id}
-              variant={bookmarkTabState.isActive ? "secondary" : "ghost"}
-              className="justify-start px-3"
-              onClick={async () => {
-                await openBookmarkTarget(bookmark.url!, refetchTabs);
-              }}
-            >
-              <Favicon
-                src={`https://www.google.com/s2/favicons?domain=${bookmark.url}&sz=128`}
-                alt={bookmark.title || bookmark.url}
-                className={`h-4 w-4 ${bookmarkTabState.hasMatchingTab ? "opacity-100" : "opacity-70"}`}
-              />
-              <span className="truncate text-sm">{bookmark.title || bookmark.url}</span>
-            </Button>
-          );
-        })()
-      ))}
+      {aboveSeparatorItems.map((node) => renderAboveSeparatorNode(node))}
 
       <div className="group relative py-2">
         <Separator />
