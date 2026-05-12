@@ -1,6 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { PlusIcon, XIcon } from "lucide-react";
+import { PlusIcon, Settings2Icon, XIcon } from "lucide-react";
 import { Button } from "./components/ui/button";
 import { Separator } from "./components/ui/separator";
 
@@ -100,6 +100,7 @@ async function getArcherBookmarkFolders(): Promise<BookmarkFolderData> {
 }
 
 function App() {
+  const visibleTabsRef = useRef<HTMLDivElement>(null);
   const { data: tabs, refetch: refetchTabs } = useQuery({
     queryKey: ["tabs"],
     queryFn: () => browser.tabs.query({ currentWindow: true }),
@@ -168,6 +169,16 @@ function App() {
     (tab) => tab.id === undefined || !tabsClaimedByBookmarks.has(tab.id),
   );
 
+  useEffect(() => {
+    const container = visibleTabsRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    container.scrollTop = container.scrollHeight;
+  }, [visibleTabs.length]);
+
   const getBookmarkTabState = (url: string) => {
     const matchingTab = tabs.find((tab) => tab.url === url);
 
@@ -178,7 +189,7 @@ function App() {
   };
 
   return (
-    <main className="flex flex-col gap-2 p-4">
+    <main className="flex h-screen flex-col gap-2 overflow-hidden p-4">
       <div
         className="grid gap-2"
         style={{
@@ -258,47 +269,64 @@ function App() {
         </button>
       </div>
 
-      {visibleTabs.map((tab) => (
-        <div key={tab.id} className="group relative">
-          <Button
-            variant={tab.active ? "secondary" : "ghost"}
-            className="w-full justify-start px-3 pr-8"
-            onClick={() => {
-              if (tab.id) {
-                browser.tabs.update(tab.id, { active: true });
-                refetchTabs();
-              }
-            }}
-          >
-            <Favicon src={tab.favIconUrl} alt={tab.title || tab.url || "Tab"} />
-            <span className="truncate text-sm">{tab.title}</span>
-          </Button>
-          <Button
-            size="sm"
-            className="absolute right-2 top-1/2 h-auto -translate-y-1/2 transform bg-secondary p-1 opacity-0 transition-opacity has-[>svg]:px-1 group-hover:opacity-100"
-            onClick={() => {
-              if (tab.id) {
-                browser.tabs.remove(tab.id);
-                refetchTabs();
-              }
-            }}
-            variant="outline"
-          >
-            <XIcon />
-          </Button>
-        </div>
-      ))}
+      <div ref={visibleTabsRef} className="min-h-0 flex-1 overflow-y-auto pr-1">
+        {visibleTabs.map((tab) => (
+          <div key={tab.id} className="group relative">
+            <Button
+              variant={tab.active ? "secondary" : "ghost"}
+              className="w-full justify-start px-3 pr-8"
+              onClick={() => {
+                if (tab.id) {
+                  browser.tabs.update(tab.id, { active: true });
+                  refetchTabs();
+                }
+              }}
+            >
+              <Favicon
+                src={tab.favIconUrl}
+                alt={tab.title || tab.url || "Tab"}
+              />
+              <span className="truncate text-sm">{tab.title}</span>
+            </Button>
+            <Button
+              size="sm"
+              className="absolute right-2 top-1/2 h-auto -translate-y-1/2 transform bg-secondary p-1 opacity-0 transition-opacity has-[>svg]:px-1 group-hover:opacity-100"
+              onClick={() => {
+                if (tab.id) {
+                  browser.tabs.remove(tab.id);
+                  refetchTabs();
+                }
+              }}
+              variant="outline"
+            >
+              <XIcon />
+            </Button>
+          </div>
+        ))}
+      </div>
 
-      <Button
-        variant="ghost"
-        className="w-full justify-start text-muted-foreground"
-        onClick={() => {
-          browser.tabs.create({ active: true });
-          refetchTabs();
-        }}
-      >
-        <PlusIcon /> New tab
-      </Button>
+      <div className="mt-auto flex items-center gap-2 pt-2">
+        <Button
+          variant="secondary"
+          size="icon"
+          className="rounded-full border border-border"
+          onClick={() => {
+            browser.runtime.openOptionsPage();
+          }}
+        >
+          <Settings2Icon />
+        </Button>
+        <Button
+          variant="secondary"
+          className="h-9 max-w-full flex-1 justify-center rounded-full border border-border"
+          onClick={() => {
+            browser.tabs.create({ active: true });
+            refetchTabs();
+          }}
+        >
+          <PlusIcon /> New tab
+        </Button>
+      </div>
     </main>
   );
 }
